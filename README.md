@@ -9,4 +9,4 @@ Final Setup:
 ![Final Setup](https://i.imgur.com/tqrMKiV.png)
 
 Operation:
-![FOperation](https://imgur.com/a/UN946nm)
+![FOperation](https://i.imgur.com/TtDSmpK.jpg)
