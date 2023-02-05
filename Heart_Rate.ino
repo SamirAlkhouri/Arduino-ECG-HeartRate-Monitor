@@ -1,0 +1,140 @@
+//The program will display Average BPM on an LED where an animation and buzzer sound will occur when heart pulse is detected by a sensor 
+
+//OLED libraries
+#include <Adafruit_GFX.h>        
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+//MAX3010x library
+#include "MAX30105.h"          
+//Heart rate algorithm
+#include "heartRate.h"         
+
+MAX30105 particleSensor;
+
+
+//Increase RATE_SIZE for a better average
+const byte RATE_SIZE = 5; 
+//Array for heart rate
+byte rates[RATE_SIZE];
+byte rateSpot = 0;
+//Time where last beat triggered
+long lastBeat = 0;
+float beatsPerMinute;
+int beatAvg;
+
+// OLED display for pixel width
+#define SCREEN_WIDTH 128 
+// OLED display for pixel height
+#define SCREEN_HEIGHT 32 
+// Reset pin where -1 for sharing Arduino reset pin
+#define OLED_RESET    -1 
+
+//Declaring display
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); 
+
+//Logo2 and Logo3 are two bmps that the OLED will display when called
+static const unsigned char PROGMEM logo2_bmp[] =
+{ 0x03, 0xC0, 0xF0, 0x06, 0x71, 0x8C, 0x0C, 0x1B, 0x06, 0x18, 0x0E, 0x02, 0x10, 0x0C, 0x03, 0x10,             
+0x04, 0x01, 0x10, 0x04, 0x01, 0x10, 0x40, 0x01, 0x10, 0x40, 0x01, 0x10, 0xC0, 0x03, 0x08, 0x88,
+0x02, 0x08, 0xB8, 0x04, 0xFF, 0x37, 0x08, 0x01, 0x30, 0x18, 0x01, 0x90, 0x30, 0x00, 0xC0, 0x60,
+0x00, 0x60, 0xC0, 0x00, 0x31, 0x80, 0x00, 0x1B, 0x00, 0x00, 0x0E, 0x00, 0x00, 0x04, 0x00, };
+
+static const unsigned char PROGMEM logo3_bmp[] =
+{ 0x01, 0xF0, 0x0F, 0x80, 0x06, 0x1C, 0x38, 0x60, 0x18, 0x06, 0x60, 0x18, 0x10, 0x01, 0x80, 0x08,
+0x20, 0x01, 0x80, 0x04, 0x40, 0x00, 0x00, 0x02, 0x40, 0x00, 0x00, 0x02, 0xC0, 0x00, 0x08, 0x03,
+0x80, 0x00, 0x08, 0x01, 0x80, 0x00, 0x18, 0x01, 0x80, 0x00, 0x1C, 0x01, 0x80, 0x00, 0x14, 0x00,
+0x80, 0x00, 0x14, 0x00, 0x80, 0x00, 0x14, 0x00, 0x40, 0x10, 0x12, 0x00, 0x40, 0x10, 0x12, 0x00,
+0x7E, 0x1F, 0x23, 0xFE, 0x03, 0x31, 0xA0, 0x04, 0x01, 0xA0, 0xA0, 0x0C, 0x00, 0xA0, 0xA0, 0x08,
+0x00, 0x60, 0xE0, 0x10, 0x00, 0x20, 0x60, 0x20, 0x06, 0x00, 0x40, 0x60, 0x03, 0x00, 0x40, 0xC0,
+0x01, 0x80, 0x01, 0x80, 0x00, 0xC0, 0x03, 0x00, 0x00, 0x60, 0x06, 0x00, 0x00, 0x30, 0x0C, 0x00,
+0x00, 0x08, 0x10, 0x00, 0x00, 0x06, 0x60, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x01, 0x80, 0x00 };
+
+//Starting OLED
+void setup() {
+    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    display.display();
+    delay(3000);
+    // Initialize sensor
+    //default I2C port, 400kHz speed
+    particleSensor.begin(Wire, I2C_SPEED_FAST); 
+    //Sensor configured with default settings
+    particleSensor.setup(); 
+    //Turn Red LED to low to indicate sensor is running
+    particleSensor.setPulseAmplitudeRed(0x0A); 
+
+}
+
+void loop() {
+    //IR value reading leads to know if the finger was detected by the sensor
+    long irValue = particleSensor.getIR();    
+    //If finger detected
+    if (irValue > 7000) {                                           
+        display.clearDisplay();                            
+        //Draw a small bmp heart picture
+        display.drawBitmap(5, 5, logo2_bmp, 24, 21, WHITE);  
+        //Average BPM displayed
+        display.setTextSize(2);                                   
+        display.setTextColor(WHITE);
+        display.setCursor(50, 0);
+        display.println("BPM");
+        display.setCursor(50, 18);
+        display.println(beatAvg);
+        display.display();
+
+        //If a heart beat is detected
+        if (checkForBeat(irValue) == true)                       
+        {
+            display.clearDisplay();                           
+            //Draw a big bmp heart picture
+            display.drawBitmap(0, 0, logo3_bmp, 32, 32, WHITE);    
+            //And still displays the average BPM
+            display.setTextSize(2);                                
+            display.setTextColor(WHITE);
+            display.setCursor(50, 0);
+            display.println("BPM");
+            display.setCursor(50, 18);
+            display.println(beatAvg);
+            display.display();
+            //Toning the buzzer
+            tone(3, 1000);                                       
+            delay(100);
+            //Deactivating buzzer
+            noTone(3);                                          
+             //Duration measured between two beats
+            long delta = millis() - lastBeat;                  
+            lastBeat = millis();
+
+            //BPM calculation
+            beatsPerMinute = 60 / (delta / 1000.0);           
+            if (beatsPerMinute < 255 && beatsPerMinute > 20)               
+            {
+                //Store this reading in the array
+                rates[rateSpot++] = (byte)beatsPerMinute;
+                //Wrap variable
+                rateSpot %= RATE_SIZE; 
+
+                //Take average of readings
+                beatAvg = 0;
+                for (byte x = 0; x < RATE_SIZE; x++)
+                    beatAvg += rates[x];
+                beatAvg /= RATE_SIZE;
+            }
+        }
+
+    }
+
+    //BPM set to 0 if no finger detected
+    if (irValue < 7000) {   
+        beatAvg = 0;
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(WHITE);
+        display.setCursor(30, 5);
+        display.println("Please Place ");
+        display.setCursor(30, 15);
+        display.println("your finger ");
+        display.display();
+        noTone(3);
+    }
+
+}
