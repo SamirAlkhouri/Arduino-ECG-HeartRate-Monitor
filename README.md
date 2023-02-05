@@ -4,5 +4,6 @@ These programs are meant to help users generate and see an electrocardiogram (EC
 
 Arduino Schematic:
 ![Schematic](https://i.imgur.com/7FHopCs.png)
+
 Final Setup:
 ![Hardware Setup](https://i.imgur.com/tqrMKiV.png)
